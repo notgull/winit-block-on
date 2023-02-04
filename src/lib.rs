@@ -51,7 +51,7 @@
 //!     }
 //! )
 //! ```
-//! 
+//!
 //! This is a contrived example, since `control_flow.set_wait_deadline()` can do the same thing. See
 //! the `networking` example for a more complex and in-depth example of combining `async` with `winit`.
 //!

@@ -12,6 +12,7 @@
 //! `rustybuzz` to lay out text, `async-h1` to make HTTP requests, `async-rustls` for
 //! TLS and `smol` to tie the async bits together.
 
+// Libstd imports.
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::convert::TryFrom;
@@ -25,30 +26,37 @@ use std::sync::Arc;
 use std::task::{Context as AsyncContext, Poll};
 use std::time::Duration;
 
+// Asynchronous I/O imports.
 use async_io::Async;
 use futures_lite::{future, io, prelude::*};
 use http_types::{Method, Request, Url};
 
+// TLS imports.
 use async_rustls::{client::TlsStream, TlsConnector};
 use rustls::OwnedTrustAnchor;
 
+// Text rasterizing imports.
 use rustybuzz::Face as LayoutFace;
 use softbuffer::{Context, Surface};
 use ttf_parser::Face;
 
+// Winit imports.
 use winit::dpi::LogicalSize;
 use winit::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{EventLoop, EventLoopBuilder};
 use winit::window::{Window, WindowBuilder};
 use winit_block_on::{prelude::*, Signal};
 
+// Convenient error handling aliases.
 type BoxError = Box<dyn Error + 'static>;
 type Result<T> = std::result::Result<T, BoxError>;
 
+// Important constants.
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 const DRAW_BUFFER_SIZE: usize = WIDTH as usize * HEIGHT as usize;
 
+// Default URLs to use if none are passed in.
 const DEFAULT_URLS: &[&str] = &[
     "https://www.rust-lang.org/",
     "https://www.google.com/",
@@ -571,31 +579,34 @@ fn main() {
         {
             let window = window.clone();
 
-            move |event, _, control_flow| match event {
-                Event::WindowEvent { event, window_id } if window_id == window.id() => {
-                    match event {
-                        WindowEvent::CloseRequested => control_flow.set_exit(),
-                        WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    virtual_keycode: Some(VirtualKeyCode::R),
-                                    ..
-                                },
-                            ..
-                        } => {
-                            // Reset.
-                            reset.notify(1);
+            move |event, _, control_flow| {
+                control_flow.set_wait();
+                match event {
+                    Event::WindowEvent { event, window_id } if window_id == window.id() => {
+                        match event {
+                            WindowEvent::CloseRequested => control_flow.set_exit(),
+                            WindowEvent::KeyboardInput {
+                                input:
+                                    KeyboardInput {
+                                        virtual_keycode: Some(VirtualKeyCode::R),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                // Reset.
+                                reset.notify(1);
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
+                    Event::RedrawRequested(window_id) if window_id == window.id() => {
+                        draw.render(&state.borrow()).expect("Failed to render");
+                    }
+                    Event::UserEvent(Rerender) => {
+                        window.request_redraw();
+                    }
+                    _ => {}
                 }
-                Event::RedrawRequested(window_id) if window_id == window.id() => {
-                    draw.render(&state.borrow()).expect("Failed to render");
-                }
-                Event::UserEvent(Rerender) => {
-                    window.request_redraw();
-                }
-                _ => {}
             }
         },
         future::poll_fn(move |cx| {
