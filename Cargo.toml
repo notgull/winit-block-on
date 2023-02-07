@@ -1,14 +1,17 @@
 [package]
 name = "winit-block-on"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 authors = ["John Nunley <jtnunley01@gmail.com>"]
 license = "BSL-1.0 OR Apache-2.0"
 description = "Block on a future using winit's event loop"
+repository = "https://github.com/notgull/winit-block-on"
+homepage = "https://github.com/notgull/winit-block-on"
+documentation = "https://docs.rs/winit-block-on"
 
 [dependencies]
 pin-utils = "0.1.0"
-winit = { version = "0.27.5", default-features = false }
+winit = { version = "0.28" }
 
 [dev-dependencies]
 async-executor = "1.5.0"
