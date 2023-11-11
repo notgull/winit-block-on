@@ -11,7 +11,12 @@ documentation = "https://docs.rs/winit-block-on"
 
 [dependencies]
 pin-utils = "0.1.0"
-winit = { version = "0.29" }
+winit = { version = "0.29", default-features = false }
+
+[features]
+default = ["x11", "wayland"]
+x11 = ["winit/x11"]
+wayland = ["winit/wayland"]
 
 [dev-dependencies]
 async-executor = "1.5.0"
