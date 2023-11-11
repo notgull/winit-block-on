@@ -22,7 +22,9 @@
 //! use std::time::Duration;
 //!
 //! // Create an event loop.
-//! let event_loop = EventLoopBuilder::new_block_on().build();
+//! let event_loop = EventLoopBuilder::new_block_on().build().unwrap_or_else(|_| {
+//!     panic!("loop creation failed")
+//! });
 //!
 //! // Create a window inside the event loop.
 //! let window = WindowBuilder::new().build(&event_loop).unwrap();
@@ -32,13 +34,13 @@
 //!
 //! // Block on the future indefinitely.
 //! event_loop.block_on(
-//!     move |event, _, control_flow| {
+//!     move |event, target| {
 //!         match event {
-//!             Event::UserEvent(()) => control_flow.set_exit(),
+//!             Event::UserEvent(()) => target.exit(),
 //!             Event::WindowEvent {
 //!                 event: WindowEvent::CloseRequested,
 //!                 window_id
-//!             } if window_id == window.id() => control_flow.set_exit(),
+//!             } if window_id == window.id() => target.exit(),
 //!             _ => {}
 //!         }
 //!     },
@@ -47,9 +49,12 @@
 //!         async_io::Timer::after(Duration::from_secs(1)).await;
 //!
 //!         // Tell the event loop to close.
-//!         proxy.send_event(()).unwrap();
+//!         proxy.send_event(winit_block_on::Signal::from(())).unwrap();
+//! 
+//!         // Wait forever for the system to close.
+//!         std::future::pending::<core::convert::Infallible>().await
 //!     }
-//! )
+//! );
 //! ```
 //!
 //! This is a contrived example, since `control_flow.set_wait_deadline()` can do the same thing. See
@@ -186,6 +191,7 @@ impl<T> EventLoopBuilderExt for EventLoopBuilder<Signal<T>> {
 }
 
 /// The signal used to notify the event loop that it should wake up.
+#[derive(Debug)]
 pub struct Signal<T>(Inner<T>);
 
 impl<T> From<T> for Signal<T> {
@@ -194,6 +200,7 @@ impl<T> From<T> for Signal<T> {
     }
 }
 
+#[derive(Debug)]
 enum Inner<T> {
     User(T),
     Wakeup,
