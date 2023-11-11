@@ -20,6 +20,7 @@ use std::env;
 use std::error::Error;
 use std::fmt::Write as _;
 use std::net::TcpStream;
+use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -42,8 +43,9 @@ use ttf_parser::Face;
 
 // Winit imports.
 use winit::dpi::LogicalSize;
-use winit::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
-use winit::event_loop::{EventLoop, EventLoopBuilder};
+use winit::event::{Event, KeyEvent, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
 use winit_block_on::{prelude::*, Signal};
 
@@ -353,8 +355,12 @@ impl Draw {
         }
 
         // Draw the image to the surface.
-        self.surface
-            .set_buffer(&*self.draw_buffer, WIDTH as u16, HEIGHT as u16);
+        self.surface.resize(
+            NonZeroU32::new(WIDTH.into()).unwrap(),
+            NonZeroU32::new(HEIGHT.into()).unwrap(),
+        )?;
+        let mut buffer = self.surface.buffer_mut()?;
+        buffer.copy_from_slice(&*self.draw_buffer);
 
         Ok(())
     }
@@ -513,7 +519,7 @@ impl Draw {
 
 fn main() {
     // Create an event loop with block-on capability.
-    let evl = EventLoopBuilder::new_block_on().build();
+    let evl = EventLoopBuilder::new_block_on().build().unwrap();
 
     // Create a window.
     let window = Rc::new(
@@ -579,16 +585,17 @@ fn main() {
         {
             let window = window.clone();
 
-            move |event, _, control_flow| {
-                control_flow.set_wait();
+            move |event, target| {
+                target.set_control_flow(ControlFlow::Wait);
+
                 match event {
                     Event::WindowEvent { event, window_id } if window_id == window.id() => {
                         match event {
-                            WindowEvent::CloseRequested => control_flow.set_exit(),
+                            WindowEvent::CloseRequested => target.exit(),
                             WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        virtual_keycode: Some(VirtualKeyCode::R),
+                                event:
+                                    KeyEvent {
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyR),
                                         ..
                                     },
                                 ..
@@ -596,11 +603,11 @@ fn main() {
                                 // Reset.
                                 reset.notify(1);
                             }
+                            WindowEvent::RedrawRequested => {
+                                draw.render(&state.borrow()).expect("failed to render");
+                            }
                             _ => {}
                         }
-                    }
-                    Event::RedrawRequested(window_id) if window_id == window.id() => {
-                        draw.render(&state.borrow()).expect("Failed to render");
                     }
                     Event::UserEvent(Rerender) => {
                         window.request_redraw();
@@ -619,6 +626,7 @@ fn main() {
             Poll::Pending
         }),
     )
+    .unwrap();
 }
 
 enum Connection {

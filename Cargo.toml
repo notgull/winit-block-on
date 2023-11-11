@@ -2,7 +2,7 @@
 name = "winit-block-on"
 version = "0.2.0"
 edition = "2018"
-authors = ["John Nunley <jtnunley01@gmail.com>"]
+authors = ["John Nunley <dev@notgull.net>"]
 license = "BSL-1.0 OR Apache-2.0"
 description = "Block on a future using winit's event loop"
 repository = "https://github.com/notgull/winit-block-on"
@@ -11,7 +11,7 @@ documentation = "https://docs.rs/winit-block-on"
 
 [dependencies]
 pin-utils = "0.1.0"
-winit = { version = "0.28" }
+winit = { version = "0.29" }
 
 [dev-dependencies]
 async-executor = "1.5.0"
@@ -26,9 +26,9 @@ http-types = "2.12.0"
 rustls = "0.20.8"
 rusttype = "0.9.3"
 rustybuzz = "0.5.0"
-softbuffer = { git = "https://github.com/rust-windowing/softbuffer", default-features = false, features = ["x11"] }
+softbuffer = { version = "0.3", default-features = false, features = ["x11"] }
 tiny-skia = "0.8.2"
 tiny-skia-path = "0.8.2"
 ttf-parser = "0.15.1"
 webpki-roots = "0.22.6"
-winit = { version = "0.27.5", default-features = false, features = ["x11"] }
+winit = { version = "0.29", default-features = false, features = ["rwh_05", "x11"] }
