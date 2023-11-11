@@ -50,7 +50,7 @@
 //!
 //!         // Tell the event loop to close.
 //!         proxy.send_event(winit_block_on::Signal::from(())).unwrap();
-//! 
+//!
 //!         // Wait forever for the system to close.
 //!         std::future::pending::<core::convert::Infallible>().await
 //!     }
