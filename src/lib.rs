@@ -63,6 +63,7 @@
 //! directly into `winit`.
 
 #![forbid(unsafe_code)]
+#![deprecated = "This crate is deprecated in favor of async-winit."]
 
 mod run_return;
 pub use run_return::*;

@@ -1,3 +1,9 @@
+## Deprecated
+
+This crate is deprecated in favor of [`async-winit`].
+
+[`async-winit`]: https://crates.io/crates/async-winit
+
 # winit-block-on
 
 Use `winit` to block on futures. This enables `winit` to be seamlessly integrated into the `async` ecosystem.

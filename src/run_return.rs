@@ -53,7 +53,7 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
         pin_utils::pin_mut!(fut);
 
         // Create a waker that will wake up the event loop.
-        let waker = make_proxy_waker(&self);
+        let waker = make_proxy_waker(self);
 
         // The output of the future.
         let mut output = None;
