@@ -69,7 +69,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(not(target_family = "wasm"))]
 mod run_return;
+#[cfg(not(target_family = "wasm"))]
 pub use run_return::*;
 
 use std::convert::Infallible;
