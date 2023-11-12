@@ -22,7 +22,9 @@
 //! use std::time::Duration;
 //!
 //! // Create an event loop.
-//! let event_loop = EventLoopBuilder::new_block_on().build();
+//! let event_loop = EventLoopBuilder::new_block_on().build().unwrap_or_else(|_| {
+//!     panic!("loop creation failed")
+//! });
 //!
 //! // Create a window inside the event loop.
 //! let window = WindowBuilder::new().build(&event_loop).unwrap();
@@ -32,13 +34,13 @@
 //!
 //! // Block on the future indefinitely.
 //! event_loop.block_on(
-//!     move |event, _, control_flow| {
+//!     move |event, target| {
 //!         match event {
-//!             Event::UserEvent(()) => control_flow.set_exit(),
+//!             Event::UserEvent(()) => target.exit(),
 //!             Event::WindowEvent {
 //!                 event: WindowEvent::CloseRequested,
 //!                 window_id
-//!             } if window_id == window.id() => control_flow.set_exit(),
+//!             } if window_id == window.id() => target.exit(),
 //!             _ => {}
 //!         }
 //!     },
@@ -47,9 +49,12 @@
 //!         async_io::Timer::after(Duration::from_secs(1)).await;
 //!
 //!         // Tell the event loop to close.
-//!         proxy.send_event(()).unwrap();
+//!         proxy.send_event(winit_block_on::Signal::from(())).unwrap();
+//!
+//!         // Wait forever for the system to close.
+//!         std::future::pending::<core::convert::Infallible>().await
 //!     }
-//! )
+//! );
 //! ```
 //!
 //! This is a contrived example, since `control_flow.set_wait_deadline()` can do the same thing. See
@@ -64,7 +69,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(not(target_family = "wasm"))]
 mod run_return;
+#[cfg(not(target_family = "wasm"))]
 pub use run_return::*;
 
 use std::convert::Infallible;
@@ -72,9 +79,10 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Wake, Waker};
 
+use winit::error::EventLoopError;
 use winit::event::Event;
 use winit::event_loop::{
-    ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget as Elwt,
+    EventLoop, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget as Elwt,
 };
 
 /// Import all relevant traits for this crate.
@@ -87,18 +95,18 @@ pub trait EventLoopExt {
     type User;
 
     /// Block on the provided future indefinitely.
-    fn block_on<F, Fut>(self, handler: F, fut: Fut) -> !
+    fn block_on<F, Fut>(self, handler: F, fut: Fut) -> Result<(), EventLoopError>
     where
-        F: FnMut(Event<'_, Self::User>, &Elwt<Signal<Self::User>>, &mut ControlFlow) + 'static,
+        F: FnMut(Event<Self::User>, &Elwt<Signal<Self::User>>) + 'static,
         Fut: Future<Output = Infallible> + 'static;
 }
 
 impl<T: Send + 'static> EventLoopExt for EventLoop<Signal<T>> {
     type User = T;
 
-    fn block_on<F, Fut>(self, mut handler: F, fut: Fut) -> !
+    fn block_on<F, Fut>(self, mut handler: F, fut: Fut) -> Result<(), EventLoopError>
     where
-        F: FnMut(Event<'_, Self::User>, &Elwt<Signal<Self::User>>, &mut ControlFlow) + 'static,
+        F: FnMut(Event<Self::User>, &Elwt<Signal<Self::User>>) + 'static,
         Fut: Future<Output = Infallible> + 'static,
     {
         // We need to pin the future on the heap, since the callback needs to be movable.
@@ -108,7 +116,7 @@ impl<T: Send + 'static> EventLoopExt for EventLoop<Signal<T>> {
         // Create a waker that will wake up the event loop.
         let waker = make_proxy_waker(&self);
 
-        self.run(move |event, target, control_flow| {
+        self.run(move |event, target| {
             // If we got a wakeup signal, process it.
             match event {
                 Event::UserEvent(Signal(Inner::Wakeup)) => {
@@ -119,12 +127,12 @@ impl<T: Send + 'static> EventLoopExt for EventLoop<Signal<T>> {
                 Event::UserEvent(Signal(Inner::User(user))) => {
                     // Forward the user event to the inner callback.
                     let event = Event::UserEvent(user);
-                    handler(event, target, control_flow);
+                    handler(event, target);
                 }
 
-                Event::RedrawEventsCleared => {
+                Event::AboutToWait => {
                     // The handler may be interested in this event.
-                    handler(Event::RedrawEventsCleared, target, control_flow);
+                    handler(Event::AboutToWait, target);
 
                     // Since we are no longer blocking any events, we can process the future.
                     if ready {
@@ -139,7 +147,7 @@ impl<T: Send + 'static> EventLoopExt for EventLoop<Signal<T>> {
                     // This is another type of event, so forward it to the inner callback.
                     let event: Event<T> =
                         event.map_nonuser_event().unwrap_or_else(|_| unreachable!());
-                    handler(event, target, control_flow);
+                    handler(event, target);
                 }
             }
         })
@@ -185,6 +193,7 @@ impl<T> EventLoopBuilderExt for EventLoopBuilder<Signal<T>> {
 }
 
 /// The signal used to notify the event loop that it should wake up.
+#[derive(Debug)]
 pub struct Signal<T>(Inner<T>);
 
 impl<T> From<T> for Signal<T> {
@@ -193,6 +202,7 @@ impl<T> From<T> for Signal<T> {
     }
 }
 
+#[derive(Debug)]
 enum Inner<T> {
     User(T),
     Wakeup,

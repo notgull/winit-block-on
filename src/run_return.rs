@@ -21,22 +21,23 @@ use super::{make_proxy_waker, Inner, Signal};
 use std::future::Future;
 use std::task::{Context, Poll};
 
+use winit::error::EventLoopError;
 use winit::event::Event;
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget as Elwt};
-use winit::platform::run_return::EventLoopExtRunReturn as _;
+use winit::event_loop::{EventLoop, EventLoopWindowTarget as Elwt};
+use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 
 /// An extension trait for `EventLoop` that allows one to block on a non-infinite future.
-pub trait EventLoopRunReturnExt {
+pub trait EventLoopRunOnDemandExt {
     type User;
 
     /// Block on the provided future until either the loop exits or the future returns a value.
     fn block_on_return<F, Fut>(&mut self, handler: F, fut: Fut) -> BlockOnReturnResult<Fut::Output>
     where
-        F: FnMut(Event<'_, Self::User>, &Elwt<Signal<Self::User>>, &mut ControlFlow),
+        F: FnMut(Event<Self::User>, &Elwt<Signal<Self::User>>),
         Fut: Future;
 }
 
-impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
+impl<T: Send + 'static> EventLoopRunOnDemandExt for EventLoop<Signal<T>> {
     type User = T;
 
     fn block_on_return<F, Fut>(
@@ -45,7 +46,7 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
         fut: Fut,
     ) -> BlockOnReturnResult<Fut::Output>
     where
-        F: FnMut(Event<'_, Self::User>, &Elwt<Signal<Self::User>>, &mut ControlFlow),
+        F: FnMut(Event<Self::User>, &Elwt<Signal<Self::User>>),
         Fut: Future,
     {
         // We need to pin the future on the heap, since the callback needs to be movable.
@@ -53,15 +54,15 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
         pin_utils::pin_mut!(fut);
 
         // Create a waker that will wake up the event loop.
-        let waker = make_proxy_waker(&self);
+        let waker = make_proxy_waker(self);
 
         // The output of the future.
         let mut output = None;
 
-        self.run_return({
+        let res = self.run_on_demand({
             let output = &mut output;
 
-            move |event, target, control_flow| {
+            move |event, target| {
                 match event {
                     Event::UserEvent(Signal(Inner::Wakeup)) => {
                         // Make sure the future is ready to wake up.
@@ -70,13 +71,13 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
 
                     Event::UserEvent(Signal(Inner::User(user))) => {
                         // Forward the user event to the callback.
-                        handler(Event::UserEvent(user), target, control_flow);
+                        handler(Event::UserEvent(user), target);
                     }
 
-                    event @ Event::RedrawEventsCleared | event @ Event::LoopDestroyed => {
+                    event @ Event::AboutToWait | event @ Event::LoopExiting => {
                         // The handler may be interested in this event.
                         let event = event.map_nonuser_event().unwrap_or_else(|_| unreachable!());
-                        handler(event, target, control_flow);
+                        handler(event, target);
 
                         // If the future is ready to be polled, poll it.
                         if ready {
@@ -90,7 +91,7 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
                                 *output = Some(res);
 
                                 // Request to exit the loop.
-                                control_flow.set_exit();
+                                target.exit();
                             }
                         }
                     }
@@ -98,7 +99,7 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
                     event => {
                         // Forward the event to the inner callback.
                         let event = event.map_nonuser_event().unwrap_or_else(|_| unreachable!());
-                        handler(event, target, control_flow);
+                        handler(event, target);
                     }
                 }
             }
@@ -106,17 +107,17 @@ impl<T: Send + 'static> EventLoopRunReturnExt for EventLoop<Signal<T>> {
 
         match output {
             Some(output) => BlockOnReturnResult::Value(output),
-            None => BlockOnReturnResult::Exit,
+            None => BlockOnReturnResult::Exit(res),
         }
     }
 }
 
 /// Either one option or another.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug)]
 pub enum BlockOnReturnResult<T> {
     /// The future returned a value.
     Value(T),
 
     /// The loop exited.
-    Exit,
+    Exit(Result<(), EventLoopError>),
 }
